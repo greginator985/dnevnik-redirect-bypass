@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Dnevnik.ru Redirect Bypass (Direct Overlay)
+// @name         Dnevnik.ru Redirect Bypass (Advanced Warning)
 // @namespace    http://tampermonkey.net/
-// @version      1.4
-// @description  Показывает окно подтверждения прямо при клике по ссылке в ленте
+// @version      1.5
+// @description  Добавляет специальное предупреждение для подозрительных сайтов
 // @author       greginator985
 // @match        *://dnevnik.ru/*
 // @run-at       document-start
@@ -14,7 +14,6 @@
 (function() {
     'use strict';
 
-    // Создаем стили заранее
     const style = document.createElement('style');
     style.innerHTML = `
         #custom-overlay {
@@ -31,6 +30,15 @@
             animation: modalShow 0.2s ease-out;
         }
         @keyframes modalShow { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        
+        .danger-text { 
+            color: #ff0000; font-weight: 900; font-size: 24px; 
+            margin: 10px 0; animation: blink 0.5s infinite; 
+        }
+        .highlight-link { color: #ff0000; text-decoration: underline; font-weight: bold; font-size: 20px; }
+        .arrows { color: #ff0000; font-size: 28px; font-weight: bold; }
+        
         #custom-modal p { color: #333; margin: 20px 0; word-break: break-all; font-size: 16px; line-height: 1.4; }
         .modal-buttons { display: flex; justify-content: center; gap: 15px; }
         .modal-btn {
@@ -55,11 +63,26 @@
             document.head.appendChild(style);
         }
 
+        const isMaxRu = url.includes('max.ru');
+        let contentHtml = '';
+
+        if (isMaxRu) {
+            contentHtml = `
+                <div class="danger-text">ВНИМАНИЕ!!!!! ОПАСНО!!!!!</div>
+                <div class="arrows">↓↓↓↓↓↓↓↓↓↓↓↓</div>
+                <p>Перейти по ссылке?<br><br><span class="highlight-link">max.ru</span></p>
+                <div class="arrows">↑↑↑↑↑↑↑↑↑↑↑↑</div>
+                <p style="font-size: 12px; color: #666;">Полный адрес: ${targetUrl}</p>
+            `;
+        } else {
+            contentHtml = `<p>Перейти по ссылке?<br><br><strong>${targetUrl}</strong></p>`;
+        }
+
         activeOverlay = document.createElement('div');
         activeOverlay.id = 'custom-overlay';
         activeOverlay.innerHTML = `
             <div id="custom-modal">
-                <p>Перейти по ссылке?<br><br><strong>${targetUrl}</strong></p>
+                ${contentHtml}
                 <div class="modal-buttons">
                     <button id="modal-yes" class="modal-btn btn-yes">Да (Enter)</button>
                     <button id="modal-no" class="modal-btn btn-no">Нет (Esc)</button>
@@ -68,30 +91,24 @@
         `;
         document.body.appendChild(activeOverlay);
 
-        document.getElementById('modal-yes').onclick = () => window.open(targetUrl, '_blank');
+        document.getElementById('modal-yes').onclick = () => { window.open(targetUrl, '_blank'); closeModal(); };
         document.getElementById('modal-no').onclick = closeModal;
     };
 
     const closeModal = () => {
-        if (activeOverlay) {
-            activeOverlay.remove();
-            activeOverlay = null;
-        }
+        if (activeOverlay) { activeOverlay.remove(); activeOverlay = null; }
     };
 
-    // Глобальный перехват кликов
     document.addEventListener('click', function(e) {
         const link = e.target.closest('a');
         if (link && link.href.includes('dnevnik.ru/v2/soc/moderation/abuse?link=')) {
             e.preventDefault();
             e.stopPropagation();
-            
             const rawUrl = new URL(link.href).searchParams.get('link');
             showModal(decodeURIComponent(rawUrl));
         }
     }, true);
 
-    // Обработка клавиатуры
     window.addEventListener('keydown', (e) => {
         if (!activeOverlay) return;
         if (e.key === 'Enter') {
